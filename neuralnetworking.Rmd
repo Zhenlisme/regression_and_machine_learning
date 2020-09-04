@@ -1,0 +1,190 @@
+---
+title: "NeuralNetworking"
+author: "Lizhen"
+date: "2019/10/23"
+documentclass: article
+fontsize: 20pt
+linkcolor: blue
+mainfont: Times
+output: 
+  html_document: 
+    fig_height: 10
+    fig_width: 12
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE,echo=FALSE}
+library(nnet)
+library(ggplot2)
+#setting the trainset and test set.
+if(FALSE){
+trainingset=function(ISN,dv,Rate){
+  N=length(ISN[,dv])
+  Lvs=levels(factor(ISN[,dv]))
+  trainIndex=c()
+  for(f in Lvs){
+    Rownam=rownames(ISN[ISN[,dv]==f,])
+    n=round(length(Rownam)*Rate)
+    trainIndex=c(sample(Rownam,n),trainIndex)
+  }
+  return(as.numeric(trainIndex))
+}}
+
+trainingset=function(ISN,dv,Rate){
+  N=length(ISN[,dv])
+  Lvs=levels(factor(ISN[,dv]))
+  trainIndex=c()
+  for(f in Lvs){
+    rowindex=which(ISN[,dv]==f)
+    #n=round(length(Rownam)*Rate)
+    trainIndex=c(sample(rowindex,Rate),trainIndex)
+  }
+  return(as.numeric(trainIndex))
+}
+
+###Predict and train
+LetTrain=function(Data,dv,iv,Rate=100){
+  trainIndex=trainingset(ISN=Data,dv=dv,Rate = Rate)
+  testIndex=setdiff(1:length(rownames(Data)),trainIndex)
+  ideal=class.ind(Data[,dv])
+  ISN_ANN <-nnet(Data[trainIndex, iv], ideal[trainIndex, ],
+                 size=20,softmax=T,maxit =600,rang = 0.1,decay = 5e-4)
+  testLabel <-predict(ISN_ANN, Data[testIndex, iv], type="class")
+  my_table <-table(Data[testIndex,][,dv], testLabel)
+  Full_elem=rownames(my_table)
+  Colnm=colnames(my_table)
+  opdf=data.frame(row.names = Full_elem)
+  for(elem in Full_elem){
+    #opdf[,elem]=ifelse(elem %in% Colnm,my_table[,elem],0)
+    if(elem %in% Colnm) opdf[,elem]=my_table[,elem] else opdf[,elem]=0
+  }
+  opmx=as.matrix(opdf)
+  ACU=sum(diag(opmx)) / sum(opmx)
+  return(list(opmx,ACU))
+}
+
+###Multiple training.
+MultiTrain=function(Data,dv,iv,Rate,t){
+  mylist=LetTrain(Data=Data,dv=dv,iv=iv,Rate = Rate)
+  opmatrix=mylist[[1]]
+  ACU=c(mylist[[2]])
+  if(t>=2){
+    for(i in c(2:t)){
+      mylist=LetTrain(Data=Data,dv=dv,iv = iv,Rate = Rate)
+      opmatrix=opmatrix+mylist[[1]]
+      ACU[i]=mylist[[2]]
+    }
+    opmatrix=opmatrix/t
+    ACU=data.frame(Accuracy=ACU,Order=c(1:t))
+    return(list(opmatrix,ACU))
+  }
+  else return(list(opmatrix,ACU))
+}
+
+```
+
+```{r,include=FALSE,echo=FALSE,message=FALSE,warning=FALSE,cache=0,eval=TRUE,error=FALSE}
+summary_file=read.csv(file = "E:/PQS_in_Plantvirus/Statistic evidence/neuralnetclassify/summary_partstrain.xlsx",
+                      sep="\t",header = T,stringsAsFactors = F)
+summary_df=summary_file[,c("Nuclear_Type","shuffle","pqstype","zscore","Strand")]
+summary_matrix=as.data.frame(matrix(summary_df$zscore,ncol = 8,byrow = T),stringsAsFactors = F)
+colnames(summary_matrix)=unique(paste(summary_df$shuffle,summary_df$pqstype,summary_df$Strand,sep = "_"))
+
+summary_matrix$Nuclear_Type=matrix(summary_df$Nuclear_Type,ncol = 8,byrow = T)[,1]
+table(summary_matrix$Nuclear_Type)
+
+summary_matrix=summary_matrix[summary_matrix$Nuclear_Type!="dsDNA-RT" & summary_matrix$Nuclear_Type!="ssRNA-satellite"
+                              & summary_matrix$Nuclear_Type!="ssRNA-RT" & summary_matrix$Nuclear_Type!="unknown",]
+
+opzd_tbl=MultiTrain(Data = summary_matrix,dv="Nuclear_Type",iv=c(1:8),Rate = 400,t=100)
+average_percentage=apply(opzd_tbl[[1]], 1, function(V) paste(V," (",round(100*V/sum(V),2),"%",")",sep=""))
+row.names(average_percentage)=colnames(average_percentage)
+
+opzd_tbl_byGis=MultiTrain(Data = summary_matrix,dv="Nuclear_Type",iv=c(1:4),Rate = 400,t=100)
+average_percentage_Gis=apply(opzd_tbl_byGis[[1]], 1, function(V) paste(V," (",round(100*V/sum(V),2),"%",")",sep=""))
+row.names(average_percentage_Gis)=colnames(average_percentage_Gis)
+
+opzd_tbl_SN=MultiTrain(Data = summary_matrix,dv="Nuclear_Type",iv=c(5:8),Rate = 400,t=100)
+average_percentage_SN=apply(opzd_tbl_SN[[1]], 1, function(V) paste(V," (",round(100*V/sum(V),2),"%",")",sep=""))
+row.names(average_percentage_SN)=colnames(average_percentage_SN)
+```
+
+```{r,include=FALSE,echo=FALSE}
+if(FALSE){
+summary_file=read.csv(file = "E:/植物病毒文章数据整理/Statistic evidence/plantvirus_summary.xlsx",
+                      sep="\t",header = T,stringsAsFactors = F)
+
+summary_df=summary_file[,c("Nuclear_Type","shuffle","pqstype","zscore","strand")]
+summary_matrix=as.data.frame(matrix(summary_df$zscore,ncol = 8,byrow = T),stringsAsFactors = F)
+colnames(summary_matrix)=unique(paste(summary_df$shuffle,summary_df$pqstype,summary_df$strand,sep = "_"))
+summary_matrix$Nuclear_Type=matrix(summary_df$Nuclear_Type,ncol = 8,byrow = T)[,1]
+table(summary_matrix$Nuclear_Type)
+## to exclude a drowback, the dsDNA-RT class and ssRNA-satellite class were droped from the data set 
+summary_matrix=summary_matrix[summary_matrix$Nuclear_Type!="dsDNA-RT" & summary_matrix$Nuclear_Type!="ssRNA-satellite"
+                              & summary_matrix$Nuclear_Type!="ssRNA-RT" & summary_matrix$Nuclear_Type!="unknown",]
+
+opzd_tbl=MultiTrain(Data = summary_matrix,dv="Nuclear_Type",iv=c(1:8),Rate = 130,t=100)
+average_percentage=apply(opzd_tbl[[1]], 1, function(V) paste(V," (",round(100*V/sum(V),2),"%",")",sep=""))
+row.names(average_percentage)=colnames(average_percentage)
+
+opzd_tbl_byGis=MultiTrain(Data = summary_matrix,dv="Nuclear_Type",iv=c(1:4),Rate = 130,t=100)
+average_percentage_Gis=apply(opzd_tbl_byGis[[1]], 1, function(V) paste(V," (",round(100*V/sum(V),2),"%",")",sep=""))
+row.names(average_percentage_Gis)=colnames(average_percentage_Gis)
+
+opzd_tbl_SN=MultiTrain(Data = summary_matrix,dv="Nuclear_Type",iv=c(5:8),Rate = 130,t=100)
+average_percentage_SN=apply(opzd_tbl_SN[[1]], 1, function(V) paste(V," (",round(100*V/sum(V),2),"%",")",sep=""))
+row.names(average_percentage_SN)=colnames(average_percentage_SN)
+}
+```
+
+## Predicted by Gis-shuffling zscore and SN-shuffling zscore of G2 and G3 PQS on both strands.
+
+```{r,include=TRUE,echo=FALSE}
+knitr::kable(average_percentage, format="html")
+mean(opzd_tbl[[2]]$Accuracy) #The average accuracy.
+```
+
+## Predicted by Gis-shuffling zscore of G2 and G3 PQS on both strands.
+
+```{r,include=TRUE,echo=FALSE}
+knitr::kable(average_percentage_Gis, format="html")
+mean(opzd_tbl_byGis[[2]]$Accuracy) #The average accuracy.
+```
+
+## Predicted by SN-shuffling zscore of G2 and G3 PQS for on both strands.
+
+```{r,include=TRUE,echo=FALSE}
+knitr::kable(average_percentage_SN, format="html")
+mean(opzd_tbl_SN[[2]]$Accuracy) #The average accuracy.
+```
+
+## Compared with different methords.
+
+```{r,include=TRUE,echo=FALSE}
+
+accuracy_df=data.frame(Accuracy=c(opzd_tbl[[2]][,1],opzd_tbl_byGis[[2]][,1],opzd_tbl_SN[[2]][,1]),
+           Methord=c(rep("Both method",100),rep("Gis shuffling",100),rep("SN shuffling",100)),
+           Order=c(1:100,1:100,1:100),
+           stringsAsFactors = F)
+
+ggplot(accuracy_df,aes(x=Order,y=Accuracy,fill=Methord))+
+  geom_point()+
+  stat_smooth(method = lm)+
+  ylim(c(0,1))+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x=element_blank())+
+  theme(axis.text.y = element_text(size=12,face = "bold",angle =0,hjust =1,vjust = 1))+
+  theme(text=element_text(face="bold",size=20),plot.title=element_text(hjust = 0.5))
+```
+
+
+
+
+
+
